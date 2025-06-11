@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Select Domain - TrendWave{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-8 mt-10">
+    <h1 class="text-2xl font-bold text-center mb-2">Select Your Interest Domain</h1>
+    <p class="text-center text-gray-600 mb-8">Choose a domain to explore trends and insights</p>
+    
+    {% if current_domain %}
+        <div class="mb-6 p-4 bg-green-100 text-green-800 rounded-md">
+            <p>Your current selection: <strong>{{ current_domain }}</strong></p>
+        </div>
+    {% endif %}
+    
+    <form method="POST" action="{{ url_for('select_domain') }}" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- AI Domain Card -->
+            <div class="border rounded-lg p-4 hover:shadow-lg transition-shadow">
+                <input type="radio" id="domain-ai" name="domain" value="AI" 
+                       class="hidden peer" {% if current_domain == 'AI' %}checked{% endif %}>
+                <label for="domain-ai" class="block cursor-pointer">
+                    <div class="text-center">
+                        <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-3">
+                            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="font-medium text-lg">AI & Tech</h3>
+                        <p class="text-sm text-gray-500 mt-1">Artificial Intelligence, Machine Learning, and Emerging Technologies</p>
+                    </div>
+                </label>
+            </div>
+            
+            <!-- Sports Domain Card -->
+            <div class="border rounded-lg p-4 hover:shadow-lg transition-shadow">
+                <input type="radio" id="domain-sports" name="domain" value="Sports" 
+                       class="hidden peer" {% if current_domain == 'Sports' %}checked{% endif %}>
+                <label for="domain-sports" class="block cursor-pointer">
+                    <div class="text-center">
+                        <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-3">
+                            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="font-medium text-lg">Sports</h3>
+                        <p class="text-sm text-gray-500 mt-1">Sports news, updates, and analysis from around the world</p>
+                    </div>
+                </label>
+            </div>
+            
+            <!-- Finance Domain Card -->
+            <div class="border rounded-lg p-4 hover:shadow-lg transition-shadow">
+                <input type="radio" id="domain-finance" name="domain" value="Finance" 
+                       class="hidden peer" {% if current_domain == 'Finance' %}checked{% endif %}>
+                <label for="domain-finance" class="block cursor-pointer">
+                    <div class="text-center">
+                        <div class="mx-auto w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-3">
+                            <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="font-medium text-lg">Finance</h3>
+                        <p class="text-sm text-gray-500 mt-1">Markets, investments, and financial news</p>
+                    </div>
+                </label>
+            </div>
+        </div>
+        
+        <div class="mt-8 text-center">
+            <button type="submit" 
+                    class="px-6 py-3 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                Save Selection
+            </button>
+        </div>
+    </form>
+    
+    <div class="mt-8 p-4 bg-gray-50 rounded-md">
+        <h3 class="font-medium text-gray-800 mb-2">What's next?</h3>
+        <p class="text-sm text-gray-600">
+            Once you've selected your preferred domain, you'll be able to explore trending topics, 
+            receive personalized insights, and stay updated with the latest news in your chosen category.
+        </p>
+    </div>
+</div>
+{% endblock %}
