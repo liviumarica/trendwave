@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Recommendation System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-indigo-700 mb-2">🍽️ Restaurant Finder</h1>
+            <p class="text-gray-600">Get personalized restaurant recommendations using AI</p>
+        </header>
+
+        <!-- Search Form -->
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="flex flex-col md:flex-row gap-4">
+                <input 
+                    type="text" 
+                    id="searchQuery" 
+                    placeholder="E.g., 'Romantic Italian restaurant with outdoor seating'"
+                    class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                <button 
+                    onclick="getRecommendations()"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-lg transition duration-200 flex items-center justify-center"
+                >
+                    <i class="fas fa-search mr-2"></i> Find Restaurants
+                </button>
+            </div>
+            <div class="mt-4 text-sm text-gray-500">
+                <p>Try: "Best sushi places near me", "Vegan restaurants with good reviews", etc.</p>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="hidden text-center my-8">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+            <p class="mt-2 text-gray-600">Finding the perfect restaurants for you...</p>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="max-w-4xl mx-auto hidden">
+            <!-- AI Recommendation -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-robot text-indigo-500 mr-2"></i> AI Recommendation
+                </h2>
+                <div id="aiRecommendation" class="prose max-w-none">
+                    <!-- AI response will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Restaurant List -->
+            <div class="mb-8">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-utensils text-indigo-500 mr-2"></i> Recommended Restaurants
+                </h2>
+                <div id="restaurantList" class="grid gap-6 md:grid-cols-2">
+                    <!-- Restaurant cards will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="error" class="hidden max-w-2xl mx-auto bg-red-50 border-l-4 border-red-500 p-4 mb-8">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-circle text-red-500 text-xl"></i>
+                </div>
+                <div class="ml-3">
+                    <p id="errorMessage" class="text-sm text-red-700">
+                        An error occurred while fetching recommendations. Please try again.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = '';
+
+        // Get authentication token
+        async function getAuthToken() {
+            try {
+                const response = await fetch('http://localhost:8000/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        'username': 'admin',
+                        'password': 'admin',
+                    }),
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Authentication failed');
+                }
+                
+                const data = await response.json();
+                return data.access_token;
+            } catch (error) {
+                console.error('Authentication error:', error);
+                showError('Failed to authenticate. Please refresh the page and try again.');
+                return null;
+            }
+        }
+
+        // Get restaurant recommendations
+        async function getRecommendations() {
+            const query = document.getElementById('searchQuery').value.trim();
+            
+            if (!query) {
+                showError('Please enter a search query');
+                return;
+            }
+            
+            // Show loading, hide results and error
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('error').classList.add('hidden');
+            
+            try {
+                // Get auth token if we don't have one
+                if (!authToken) {
+                    authToken = await getAuthToken();
+                    if (!authToken) return;
+                }
+                
+                // Make API request
+                const response = await fetch(`http://localhost:8000/api/recommend?query=${encodeURIComponent(query)}&limit=3`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    // If token is invalid, try to get a new one
+                    if (response.status === 401) {
+                        authToken = await getAuthToken();
+                        if (!authToken) return;
+                        
+                        // Retry with new token
+                        const retryResponse = await fetch(`http://localhost:8000/api/recommend?query=${encodeURIComponent(query)}&limit=3`, {
+                            headers: {
+                                'Authorization': `Bearer ${authToken}`
+                            }
+                        });
+                        
+                        if (!retryResponse.ok) {
+                            throw new Error('Failed to get recommendations');
+                        }
+                        
+                        displayResults(await retryResponse.json());
+                        return;
+                    }
+                    
+                    throw new Error('Failed to get recommendations');
+                }
+                
+                const data = await response.json();
+                displayResults(data);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Failed to get recommendations. Please try again.');
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+            }
+        }
+
+        // Display results
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            const aiRecommendationDiv = document.getElementById('aiRecommendation');
+            const restaurantListDiv = document.getElementById('restaurantList');
+            
+            if (!data.success || !data.results || data.results.length === 0) {
+                showError('No restaurants found matching your criteria. Please try a different search.');
+                return;
+            }
+            
+            // Display AI recommendation
+            aiRecommendationDiv.innerHTML = `<p class="text-gray-700">${data.recommendation || 'Here are some recommendations for you:'}</p>`;
+            
+            // Clear previous results
+            restaurantListDiv.innerHTML = '';
+            
+            // Display restaurant cards
+            data.results.forEach(restaurant => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow';
+                
+                // Create rating stars
+                const rating = restaurant.rating || 0;
+                const stars = Array(5).fill('').map((_, i) => 
+                    i < Math.floor(rating) 
+                        ? '<i class="fas fa-star text-yellow-400"></i>'
+                        : '<i class="far fa-star text-gray-300"></i>'
+                ).join('');
+                
+                card.innerHTML = `
+                    <div class="p-6">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="text-xl font-semibold text-gray-800">${restaurant.name || 'Restaurant'}</h3>
+                                <p class="text-indigo-600 font-medium">${restaurant.cuisine || 'Cuisine not specified'}</p>
+                            </div>
+                            <div class="bg-indigo-100 text-indigo-800 text-sm font-semibold px-2.5 py-0.5 rounded">
+                                ${restaurant.price_range || 'N/A'}
+                            </div>
+                        </div>
+                        
+                        <div class="mt-2 mb-3">
+                            <div class="flex">
+                                ${stars}
+                                <span class="ml-2 text-gray-600 text-sm">${rating.toFixed(1)}</span>
+                            </div>
+                        </div>
+                        
+                        <p class="text-gray-600 mb-4">${restaurant.description || 'No description available.'}</p>
+                        
+                        <div class="flex items-center text-sm text-gray-500">
+                            <i class="fas fa-map-marker-alt mr-2"></i>
+                            <span>${restaurant.address || 'Address not available'}</span>
+                        </div>
+                    </div>
+                `;
+                
+                restaurantListDiv.appendChild(card);
+            });
+            
+            // Show results
+            resultsDiv.classList.remove('hidden');
+        }
+        
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            errorMessage.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+        
+        // Allow pressing Enter in search box
+        document.getElementById('searchQuery').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                getRecommendations();
+            }
+        });
+    </script>
+</body>
+</html>

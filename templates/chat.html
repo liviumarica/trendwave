@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Chat - Find Your Perfect Meal</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .chat-container {
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #4f46e5 #e5e7eb;
+        }
+        .chat-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-container::-webkit-scrollbar-track {
+            background: #e5e7eb;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background-color: #4f46e5;
+            border-radius: 3px;
+        }
+        .typing-indicator span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #9ca3af;
+            margin: 0 2px;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        .message {
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Navigation -->
+    <nav class="bg-indigo-600 text-white p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-utensils text-2xl"></i>
+                <h1 class="text-xl font-bold">Restaurant Finder</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span class="hidden md:inline">Welcome, {{ username }}</span>
+                <a href="{{ url_for('auth.logout') }}" class="bg-white text-indigo-600 px-4 py-1 rounded-full text-sm font-medium hover:bg-indigo-50 transition">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Sign Out
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mx-auto p-4 max-w-4xl">
+        <!-- Chat Container -->
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <!-- Chat Header -->
+            <div class="bg-indigo-50 p-4 border-b border-gray-200">
+                <div class="flex items-center">
+                    <div class="bg-indigo-600 text-white p-2 rounded-full">
+                        <i class="fas fa-robot text-lg"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h2 class="font-semibold text-gray-800">Restaurant Assistant</h2>
+                        <p class="text-xs text-gray-500">Ask me to find the perfect restaurant for you</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Messages -->
+            <div class="chat-container p-4" id="chat-messages">
+                <!-- Welcome Message -->
+                <div class="mb-6 message">
+                    <div class="inline-block bg-indigo-100 rounded-2xl px-4 py-3 max-w-xs md:max-w-md">
+                        <p class="text-gray-800">👋 Hi there! I'm your restaurant assistant. You can ask me things like:</p>
+                        <ul class="mt-2 text-sm text-indigo-700 list-disc pl-5 space-y-1">
+                            <li>"Find me a romantic Italian restaurant"</li>
+                            <li>"I'm in the mood for sushi near me"</li>
+                            <li>"Best vegan options in town"</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Typing Indicator (Hidden by default) -->
+            <div id="typing-indicator" class="hidden p-4 border-t border-gray-200">
+                <div class="flex items-center">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center mr-2">
+                        <i class="fas fa-robot text-indigo-500"></i>
+                    </div>
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Input Area -->
+            <div class="p-4 border-t border-gray-200 bg-gray-50">
+                <form id="chat-form" class="flex space-x-2">
+                    <input 
+                        type="text" 
+                        id="user-input" 
+                        placeholder="Type your message..." 
+                        class="flex-1 px-4 py-3 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        autocomplete="off"
+                    >
+                    <button 
+                        type="submit" 
+                        class="bg-indigo-600 text-white px-6 py-3 rounded-full hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition"
+                        id="send-button"
+                    >
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+                <p class="text-xs text-gray-500 mt-2 text-center">
+                    Try: "Find me a cozy cafe with good coffee and free WiFi"
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const sendButton = document.getElementById('send-button');
+        
+        // Auto-resize textarea
+        userInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+        
+        // Handle form submission
+        chatForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const message = userInput.value.trim();
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessage('user', message);
+            userInput.value = '';
+            userInput.style.height = 'auto';
+            
+            // Show typing indicator
+            typingIndicator.classList.remove('hidden');
+            scrollToBottom();
+            
+            try {
+                // Disable form while processing
+                sendButton.disabled = true;
+                userInput.disabled = true;
+                
+                // Send message to server
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message })
+                });
+                
+                const data = await response.json();
+                
+                // Remove typing indicator
+                typingIndicator.classList.add('hidden');
+                
+                if (data.success) {
+                    // Add assistant's response
+                    addMessage('assistant', data.response);
+                } else {
+                    showError(data.error || 'Sorry, something went wrong. Please try again.');
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                typingIndicator.classList.add('hidden');
+                showError('Failed to send message. Please check your connection and try again.');
+            } finally {
+                // Re-enable form
+                sendButton.disabled = false;
+                userInput.disabled = false;
+                userInput.focus();
+            }
+        });
+        
+        // Add a message to the chat
+        function addMessage(role, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `mb-4 message ${role === 'user' ? 'flex justify-end' : 'flex justify-start'}`;
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = `inline-block rounded-2xl px-4 py-3 max-w-xs md:max-w-md ${
+                role === 'user' 
+                    ? 'bg-indigo-600 text-white rounded-br-none' 
+                    : 'bg-indigo-100 text-gray-800 rounded-bl-none'
+            }`;
+            
+            // Convert newlines to <br> and preserve other HTML
+            messageContent.innerHTML = content.replace(/\n/g, '<br>');
+            
+            messageDiv.appendChild(messageContent);
+            chatMessages.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            scrollToBottom();
+        }
+        
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'mb-4 flex justify-center';
+            errorDiv.innerHTML = `
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                    <span class="block sm:inline">${message}</span>
+                </div>
+            `;
+            chatMessages.appendChild(errorDiv);
+            scrollToBottom();
+        }
+        
+        // Scroll chat to bottom
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Focus input on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            userInput.focus();
+        });
+    </script>
+</body>
+</html>
