@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, jsonify, session
 from flask_login import login_required, current_user
 from datetime import datetime
+from google.cloud import firestore
 from extensions import db, mongo_col # Import mongo_col for MongoDB access
 import google.generativeai as genai
 import os
