@@ -14,9 +14,11 @@ chat_bp = Blueprint('chat', __name__)
 try:
     genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
     gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+    embed_model = genai.EmbeddingModel(model_name="models/embedding-001")
 except Exception as e:
-    print(f"Error initializing Gemini in chat routes: {e}")
+    print(f"Error initializing Gemini or embedding model: {e}")
     gemini_model = None
+    embed_model = None
 
 def get_chat_history(user_id):
     try:
@@ -44,12 +46,18 @@ def get_recommendation_context(query):
         logging.error("MongoDB collection (mongo_col) is not available.")
         return []
     try:
-        placeholder_embedding = [0.01] * 256
+        if not embed_model:
+            logging.error("Embedding model is not initialized.")
+            return []
+
+        embedding_response = embed_model.embed_content(content=query, task_type="RETRIEVAL_QUERY")
+        query_vector = embedding_response.embedding
+
         results = list(mongo_col.aggregate([
             {
                 "$vectorSearch": {
                     "index": "vector_index",
-                    "queryVector": placeholder_embedding,
+                    "queryVector": query_vector,
                     "path": "embedding",
                     "numCandidates": 100,
                     "limit": 5
