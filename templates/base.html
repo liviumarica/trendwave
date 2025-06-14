@@ -9,14 +9,14 @@
 <body class="bg-gray-100">
     <nav class="bg-blue-600 text-white p-4">
         <div class="container mx-auto flex justify-between items-center">
-            <a href="{{ url_for('select_domain') }}" class="text-xl font-bold">TrendWave</a>
+            <a href="{{ url_for('index') }}" class="text-xl font-bold">TrendWave</a>
             <div>
                 {% if current_user.is_authenticated %}
                     <span class="mr-4">Welcome, {{ current_user.email }}</span>
-                    <a href="{{ url_for('logout') }}" class="bg-red-500 hover:bg-red-700 px-4 py-2 rounded">Logout</a>
+                    <a href="{{ url_for('auth.logout') }}" class="bg-red-500 hover:bg-red-700 px-4 py-2 rounded">Logout</a>
                 {% else %}
-                    <a href="{{ url_for('login') }}" class="bg-green-500 hover:bg-green-700 px-4 py-2 rounded">Login</a>
-                    <a href="{{ url_for('register') }}" class="bg-blue-500 hover:bg-blue-700 px-4 py-2 rounded ml-2">Register</a>
+                    <a href="{{ url_for('auth.login') }}" class="bg-green-500 hover:bg-green-700 px-4 py-2 rounded">Login</a>
+                    <a href="{{ url_for('auth.register') }}" class="bg-blue-500 hover:bg-blue-700 px-4 py-2 rounded ml-2">Register</a>
                 {% endif %}
             </div>
         </div>

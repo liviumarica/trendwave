@@ -1,63 +1,136 @@
-from flask import Blueprint, render_template, request, jsonify, session
+"""
+Chat routes for the TrendWave application.
+Handles chat-related functionality including message processing and response generation.
+"""
+import os
+import logging
+from flask import Blueprint, render_template, request, jsonify, current_app
 from flask_login import login_required, current_user
 from datetime import datetime
 from google.cloud import firestore
 from extensions import db, mongo_col
-import google.generativeai as genai
-import os
-import json
-import logging
+from models.user import User
 
+# Initialize the chat blueprint
 chat_bp = Blueprint('chat', __name__)
 
-# Initialize Gemini
-try:
-    genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
-    embed_model = genai.EmbeddingModel(model_name="models/embedding-001")
-except Exception as e:
-    print(f"Error initializing Gemini or embedding model: {e}")
-    gemini_model = None
-    embed_model = None
-
 def get_chat_history(user_id):
-    try:
-        chat_doc = db.collection('chat_sessions').document(user_id).get()
-        if chat_doc.exists:
-            return chat_doc.to_dict().get('messages', [])
+    """
+    Retrieve chat history for a user from Firestore.
+    Returns an empty list if no history exists or if an error occurs.
+    """
+    if not user_id:
+        logging.warning("No user_id provided to get_chat_history")
         return []
+        
+    try:
+        chat_ref = db.collection('chat_sessions').document(str(user_id))
+        chat_doc = chat_ref.get()
+        
+        if not chat_doc.exists:
+            logging.info(f"No chat history found for user {user_id}")
+            return []
+            
+        chat_data = chat_doc.to_dict()
+        messages = chat_data.get('messages', [])
+        
+        # Ensure we're returning a list and filter out any invalid messages
+        if not isinstance(messages, list):
+            logging.warning(f"Chat history for user {user_id} is not a list: {messages}")
+            return []
+            
+        # Filter out any invalid message entries
+        valid_messages = []
+        for msg in messages:
+            if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+                valid_messages.append({
+                    'role': msg.get('role', ''),
+                    'content': msg.get('content', ''),
+                    'timestamp': msg.get('timestamp', datetime.utcnow().isoformat())
+                })
+        
+        logging.info(f"Retrieved {len(valid_messages)} messages from chat history for user {user_id}")
+        return valid_messages
+        
     except Exception as e:
-        print(f"Error getting chat history: {e}")
+        logging.error(f"Error getting chat history for user {user_id}: {str(e)}", exc_info=True)
         return []
 
 def save_chat_history(user_id, messages):
+    """
+    Save chat history for a user to Firestore.
+    
+    Args:
+        user_id: The ID of the user
+        messages: List of message dictionaries to save
+    """
+    if not user_id:
+        logging.error("Cannot save chat history: No user_id provided")
+        return False
+        
+    if not messages or not isinstance(messages, list):
+        logging.error(f"Cannot save chat history for user {user_id}: Invalid messages format")
+        return False
+        
     try:
-        chat_ref = db.collection('chat_sessions').document(user_id)
-        chat_ref.set({
-            'user_id': user_id,
-            'messages': messages[-10:],
-            'updated_at': firestore.SERVER_TIMESTAMP
-        })
+        # Ensure we don't save too many messages
+        messages_to_save = messages[-10:]  # Keep only the last 10 messages
+        
+        # Prepare the document data
+        chat_data = {
+            'user_id': str(user_id),
+            'messages': messages_to_save,
+            'updated_at': firestore.SERVER_TIMESTAMP,
+            'message_count': len(messages_to_save)
+        }
+        
+        # Save to Firestore
+        doc_ref = db.collection('chat_sessions').document(str(user_id))
+        doc_ref.set(chat_data)
+        
+        logging.info(f"Successfully saved {len(messages_to_save)} messages for user {user_id}")
+        return True
+        
     except Exception as e:
-        print(f"Error saving chat history: {e}")
+        logging.error(f"Error saving chat history for user {user_id}: {str(e)}", exc_info=True)
+        return False
 
 def get_recommendation_context(query):
-    if mongo_col is None:
-        logging.error("MongoDB collection (mongo_col) is not available.")
+    """
+    Get relevant restaurant recommendations based on the user's query using vector search.
+    
+    Args:
+        query: The user's search query
+        
+    Returns:
+        List of restaurant documents matching the query, or empty list if no results or error
+    """
+    if not query or not isinstance(query, str):
+        logging.warning("Invalid query provided to get_recommendation_context")
         return []
+        
+    if mongo_col is None:
+        logging.error("MongoDB collection not available. Check your MongoDB connection.")
+        return []
+        
     try:
-        if not embed_model:
-            logging.error("Embedding model is not initialized.")
+        logging.info(f"Generating embeddings for query: '{query}'")
+        
+        # Generate embedding vector for the query
+        embeddings = current_app.embed_model.get_embeddings([query])
+        if not embeddings or not hasattr(embeddings[0], 'values'):
+            logging.error("Failed to generate embeddings for query")
             return []
+            
+        query_vec = embeddings[0].values
+        logging.info("Successfully generated query vector")
 
-        embedding_response = embed_model.embed_content(content=query, task_type="RETRIEVAL_QUERY")
-        query_vector = embedding_response.embedding
-
-        results = list(mongo_col.aggregate([
+        # Define the vector search pipeline
+        pipeline = [
             {
                 "$vectorSearch": {
                     "index": "vector_index",
-                    "queryVector": query_vector,
+                    "queryVector": query_vec,
                     "path": "embedding",
                     "numCandidates": 100,
                     "limit": 5
@@ -65,26 +138,39 @@ def get_recommendation_context(query):
             },
             {
                 "$project": {
-                    "name": 1,
-                    "cuisine": 1,
-                    "address": 1,
+                    "name": 1, 
+                    "cuisine": 1, 
+                    "address": 1, 
                     "stars": 1,
-                    "priceRange": 1,
-                    "OutdoorSeating": 1,
+                    "priceRange": 1, 
+                    "OutdoorSeating": 1, 
                     "DogsAllowed": 1,
-                    "HappyHour": 1,
-                    "review_count": 1,
+                    "HappyHour": 1, 
+                    "review_count": 1, 
                     "borough": 1,
-                    "attributes": 1,
-                    "score": {"$meta": "vectorSearchScore"},
+                    "score": {"$meta": "vectorSearchScore"}, 
                     "_id": 0
                 }
+            },
+            {
+                "$addFields": {
+                    "score": {"$round": ["$score", 4]}
+                }
             }
-        ]))
-        logging.info(f"MongoDB vector search returned {len(results)} results for query: '{query}'")
+        ]
+        
+        logging.info("Executing MongoDB aggregation pipeline...")
+        cursor = mongo_col.aggregate(pipeline)
+        results = list(cursor)
+        
+        logging.info(f"MongoDB returned {len(results)} results for query: '{query}'")
+        if results:
+            logging.debug(f"Sample result: {results[0]}")
+            
         return results
+        
     except Exception as e:
-        logging.exception(f"Error during MongoDB vector search for query '{query}':")
+        logging.error(f"Error during vector search for '{query}': {str(e)}", exc_info=True)
         return []
 
 @chat_bp.route('/chat')
@@ -95,80 +181,98 @@ def chat():
 @chat_bp.route('/api/chat', methods=['POST'])
 @login_required
 def chat_api():
-    logging.info("--- chat_api: Entered function (outside try block) ---")
     try:
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Content-Type must be application/json'}), 400
+            
         data = request.get_json()
+        logging.info(f"Received chat request with data: {data}")
+        
         user_message = data.get('message', '').strip()
-
         if not user_message:
-            return jsonify({'error': 'Message cannot be empty'}), 400
+            return jsonify({'success': False, 'error': 'Message cannot be empty'}), 400
 
-        messages = get_chat_history(current_user.id)
-
-        if not gemini_model:
-            return jsonify({'success': False, 'error': 'AI service is currently unavailable'}), 503
-
-        context_docs = get_recommendation_context(user_message)
-
-        context_text = ""
-        for r in context_docs:
-            addr = r.get("address", {})
-            context_text += (
-                f"- {r.get('name', 'Unknown')} ({r.get('cuisine', 'unknown cuisine')}), "
-                f"Address: {addr.get('street', '')}, {addr.get('zipcode', '')}, "
-                f"Rating: {r.get('stars', 'N/A')} stars, Reviews: {r.get('review_count', 'N/A')}, "
-                f"Price: {r.get('priceRange', 'N/A')}, Outdoor: {r.get('OutdoorSeating', 'N/A')}, "
-                f"DogsAllowed: {r.get('DogsAllowed', 'N/A')}, HappyHour: {r.get('HappyHour', 'N/A')}\n"
-            )
-
-        if not context_docs:
-            prompt = f"""You are a helpful restaurant assistant.
-I could not find specific restaurants in my database for your query: '{user_message}'.
-Please ask a more specific question or provide more context (like type of food, price range, location)."""
-        else:
-            prompt = f"""You are a helpful restaurant assistant.
-The user asked: "{user_message}"
-
-Here are some potentially relevant restaurants from the database:
-{context_text}
-
-Please answer the user's question using only the data above. Be factual, concise, and suggest options based on context. Do not invent data. If uncertain, ask the user for clarification."""
-
-        logging.info(f"--- chat_api: About to call Gemini with RAG prompt. User message: '{user_message}' ---")
-        gemini_response = gemini_model.generate_content(contents=[{"role": "user", "parts": [prompt]}])
-
-        ai_response_text = ""
         try:
-            ai_response_text = gemini_response.text
-        except Exception as e:
-            logging.exception("Error extracting text from Gemini response")
-            if gemini_response.prompt_feedback:
-                logging.error(f"Prompt feedback: {gemini_response.prompt_feedback}")
-                ai_response_text = "I'm sorry, I can't respond to that due to safety guidelines."
+            # Check if models are initialized
+            if not hasattr(current_app, 'gemini_model') or not current_app.gemini_model:
+                error_msg = "Text generation model is not initialized. Please check the server logs for details."
+                current_app.logger.error(error_msg)
+                return jsonify({
+                    'success': False,
+                    'error': 'AI service is not available',
+                    'details': error_msg,
+                    'model_status': 'not_initialized'
+                }), 500
+            
+            if not hasattr(current_app, 'embed_model') or not current_app.embed_model:
+                error_msg = "Text embedding model is not initialized. Please check the server logs for details."
+                current_app.logger.error(error_msg)
+                return jsonify({
+                    'success': False,
+                    'error': 'AI service is not available',
+                    'details': error_msg,
+                    'model_status': 'not_initialized'
+                }), 500
+                
+            messages = get_chat_history(current_user.id)
+            context_docs = get_recommendation_context(user_message)
+
+            # Build prompt
+            if not context_docs:
+                prompt = f"You are a restaurant assistant. No relevant restaurants found for '{user_message}'. Ask for more details to provide better recommendations."
+                logging.info("No context docs found, using fallback prompt")
             else:
-                ai_response_text = "I'm sorry, I encountered an issue generating a response."
+                ctx = "\n".join(
+                    f"- {r.get('name', 'Unnamed')} ({r.get('cuisine', 'Unknown cuisine')}), "
+                    f"Address: {r.get('address', {}).get('street', 'N/A')}, {r.get('address', {}).get('zipcode', '')}, "
+                    f"Rating: ⭐ {r.get('stars', 'N/A')}, "
+                    f"Price: {r.get('priceRange', 'N/A')}, "
+                    f"Outdoor: {r.get('OutdoorSeating', 'N/A')}"
+                    for r in context_docs
+                )
+                prompt = (
+                    f"You are a helpful restaurant assistant.\n"
+                    f"User asked: \"{user_message}\"\n"
+                    f"Here are some restaurant candidates that might match:\n{ctx}\n"
+                    f"Please provide a helpful response based on these options. If the user is looking for something specific "
+                    f"that's not in these options, politely suggest they try a different search term."
+                )
+                logging.info(f"Built prompt with {len(context_docs)} context documents")
 
-        messages.append({
-            'role': 'user',
-            'content': user_message,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+            logging.info("Sending request to Gemini model...")
+            response = current_app.gemini_model.predict(prompt)
+            ai_text = response.text
+            logging.info("Received response from Gemini model")
 
-        messages.append({
-            'role': 'assistant',
-            'content': ai_response_text,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+            # Update chat history
+            new_messages = [
+                {'role': 'user', 'content': user_message, 'timestamp': datetime.utcnow().isoformat()},
+                {'role': 'assistant', 'content': ai_text, 'timestamp': datetime.utcnow().isoformat()}
+            ]
+            
+            # Keep only the last 10 messages to avoid storing too much history
+            updated_messages = (messages + new_messages)[-10:]
+            save_chat_history(current_user.id, updated_messages)
 
-        save_chat_history(current_user.id, messages)
+            return jsonify({
+                'success': True,
+                'response': ai_text,
+                'context_used': bool(context_docs)
+            })
 
-        logging.info("--- chat_api: Successfully processed request, about to return response ---")
-        return jsonify({
-            'success': True,
-            'response': ai_response_text,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        except Exception as e:
+            logging.error(f"Error processing chat request: {str(e)}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'error': 'An error occurred while processing your request',
+                'details': str(e)
+            }), 500
 
     except Exception as e:
-        logging.exception("--- chat_api: EXCEPTION CAUGHT ---")
-        return jsonify({'error': 'Internal Server Error'}), 500
+        logging.error(f"Unexpected error in chat_api: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': 'An unexpected error occurred',
+            'details': str(e)
+        }), 500
+
