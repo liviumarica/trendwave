@@ -44,7 +44,6 @@ chat_bp = Blueprint("chat", __name__)
 def _history_doc(uid):
     return db.collection("chat_sessions").document(str(uid))
 
-
 def get_chat_history(uid):
     try:
         snap = _history_doc(uid).get()
@@ -52,7 +51,6 @@ def get_chat_history(uid):
     except Exception as exc:
         logging.warning("Firestore history error: %s", exc)
         return []
-
 
 def save_chat_history(uid, msgs):
     try:
@@ -122,6 +120,7 @@ def vector_search(query: str):
     except Exception as e:
         logger.error(f"Error in MongoDB vector search: {str(e)}")
         return []
+
 # -----------------------------------------------------------------------------
 #  Routes
 # -----------------------------------------------------------------------------
@@ -130,7 +129,6 @@ def vector_search(query: str):
 @login_required
 def chat():
     return render_template("chat.html", username=current_user.email.split("@")[0])
-
 
 @chat_bp.route("/api/chat", methods=["POST"])
 @login_required
@@ -141,18 +139,79 @@ def chat_api():
         if not user_msg:
             return jsonify({"success": False, "error": "Empty message"}), 400
 
+        session_id = str(current_user.id)  # Use user ID as session identifier
         history = get_chat_history(current_user.id)
-        candidates = vector_search(user_msg)
+
+        # Initialize or retrieve conversation context for this session
+        if 'conversation_context' not in globals():
+            globals()['conversation_context'] = {}
+        if session_id not in conversation_context:
+            conversation_context[session_id] = {'candidates': None}
+
+        # Perform vector search for new queries or reuse candidates for follow-ups
+        if any(keyword in user_msg.lower() for keyword in ["address", "price", "reviews", "tv", "family", "kids", "expensive", "cheap", "rating"]) and conversation_context[session_id]['candidates']:
+            candidates = conversation_context[session_id]['candidates']
+        else:
+            candidates = vector_search(user_msg)
+            conversation_context[session_id]['candidates'] = candidates
+
         logger.info(f"Candidates from vector search: {candidates}")
+
+        # Generate prompt with detailed context
         if candidates:
             ctx = "\n".join(
                 f"- {c['name']} ({c['cuisine']}), ⭐{c.get('stars', 'N/A')} — "
-                f"Outdoor: {c.get('OutdoorSeating', 'N/A')}" for c in candidates)
-            prompt = (
-                f"You are a helpful restaurant assistant.\n"
-                f"User: {user_msg}\n"
-                f"Here are some possible restaurants:\n{ctx}\n"
-                f"Answer with best recommendations using only this data.")
+                f"Address: {c.get('address', {}).get('street', 'N/A')}, {c.get('address', {}).get('zipcode', 'N/A')} — "
+                f"Price Range: {c.get('priceRange', 'N/A')} — "
+                f"Outdoor Seating: {c.get('OutdoorSeating', 'N/A')} — "
+                f"Dogs Allowed: {c.get('DogsAllowed', 'N/A')} — "
+                f"Score: {c.get('score', 'N/A'):.2f}"
+                for c in candidates)
+            # Detect intent for follow-up questions
+            if "address" in user_msg.lower():
+                prompt = (
+                    f"You are a helpful restaurant assistant.\n"
+                    f"User: {user_msg}\n"
+                    f"Here are the restaurants to consider:\n{ctx}\n"
+                    f"Provide the address of the restaurant(s) mentioned in the user query, or all addresses if no specific restaurant is mentioned, using only this data."
+                )
+            elif any(keyword in user_msg.lower() for keyword in ["price", "expensive", "cheap"]):
+                prompt = (
+                    f"You are a helpful restaurant assistant.\n"
+                    f"User: {user_msg}\n"
+                    f"Here are the restaurants to consider:\n{ctx}\n"
+                    f"Provide the price range of the restaurant(s) mentioned, or all price ranges if no specific restaurant is mentioned, using only this data."
+                )
+            elif "reviews" in user_msg.lower() or "rating" in user_msg.lower():
+                prompt = (
+                    f"You are a helpful restaurant assistant.\n"
+                    f"User: {user_msg}\n"
+                    f"Here are the restaurants to consider:\n{ctx}\n"
+                    f"Provide the star rating of the restaurant(s) mentioned, or all ratings if no specific restaurant is mentioned, using only this data."
+                )
+            elif "tv" in user_msg.lower():
+                prompt = (
+                    f"You are a helpful restaurant assistant.\n"
+                    f"User: {user_msg}\n"
+                    f"Here are the restaurants to consider:\n{ctx}\n"
+                    f"Indicate if the restaurant(s) mentioned have TV information available (note: TV data is not present in this dataset, so respond accordingly), or check all restaurants if no specific one is mentioned, using only this data."
+                )
+            elif any(keyword in user_msg.lower() for keyword in ["family", "kids", "children"]):
+                prompt = (
+                    f"You are a helpful restaurant assistant.\n"
+                    f"User: {user_msg}\n"
+                    f"Here are the restaurants to consider:\n{ctx}\n"
+                    f"Assess if the restaurant(s) mentioned are suitable for families with children (consider outdoor seating and general ambiance inferred from stars), or evaluate all restaurants if no specific one is mentioned, using only this data."
+                )
+            else:
+                prompt = (
+                    f"You are a helpful restaurant assistant.\n"
+                    f"User: {user_msg}\n"
+                    f"Here are the restaurants to consider:\n{ctx}\n"
+                    f"Recommend the best match based solely on this data, prioritizing romantic Italian restaurants "
+                    f"with a rating over 4 stars and outdoor seating. If no exact match, suggest the closest match "
+                    f"and explain why, using the score as a relevance indicator."
+                )
         else:
             prompt = (f"You are a helpful restaurant assistant. User asks: '{user_msg}'. "
                       f"No matching restaurants found — politely ask for more details.")
