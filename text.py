@@ -1,4 +1,7 @@
-import importlib
-genai = importlib.import_module("google.genai")
-print("genai version:", getattr(genai, "__version__", "unknown"))
-print("module path  :", genai.__file__)
+from extensions import mongo_col
+sample_doc = mongo_col.find_one({"embedding": {"$exists": True}})
+if sample_doc:
+    print(f"Sample document: {sample_doc}")
+    print(f"Embedding length: {len(sample_doc.get('embedding', []))}")
+else:
+    print("No documents with embedding field found")

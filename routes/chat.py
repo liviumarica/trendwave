@@ -96,7 +96,7 @@ def vector_search(query: str):
         else:
             logger.error("Unexpected response format from embed_content")
             return []
-            
+        logger.info(f"Generated query vector length: {len(vec)}")    
     except Exception as e:
         logger.error(f"Error generating embedding: {str(e)}")
         return []
@@ -116,7 +116,9 @@ def vector_search(query: str):
         }}
     ]
     try:
-        return list(mongo_col.aggregate(pipeline))
+        results = list(mongo_col.aggregate(pipeline))
+        logger.info(f"Vector search returned {len(results)} candidates: {results}")
+        return results
     except Exception as e:
         logger.error(f"Error in MongoDB vector search: {str(e)}")
         return []
@@ -141,7 +143,7 @@ def chat_api():
 
         history = get_chat_history(current_user.id)
         candidates = vector_search(user_msg)
-
+        logger.info(f"Candidates from vector search: {candidates}")
         if candidates:
             ctx = "\n".join(
                 f"- {c['name']} ({c['cuisine']}), ⭐{c.get('stars', 'N/A')} — "
@@ -155,6 +157,7 @@ def chat_api():
             prompt = (f"You are a helpful restaurant assistant. User asks: '{user_msg}'. "
                       f"No matching restaurants found — politely ask for more details.")
 
+        logger.info(f"Generated prompt: {prompt}")
         text_model = current_app.config["TEXT_MODEL"]
         client = get_genai_client()
         if client is None:
