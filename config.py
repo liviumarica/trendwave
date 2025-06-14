@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")
     DB_NAME: str = os.getenv("DB_NAME", "restaurant_db")
     COLLECTION_NAME: str = os.getenv("COLLECTION_NAME", "restaurants")
-    VECTOR_INDEX: str = os.getenv("VECTOR_INDEX", "vector_index")
+    VECTOR_INDEX: str = os.getenv("VECTOR_INDEX", "vector_index_1")
     
     # Google Gemini Configuration
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")

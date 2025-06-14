@@ -18,7 +18,8 @@ load_dotenv()
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
 PROJECT_ID    = os.getenv("GCP_PROJECT_ID")  # optional for Vertex‑hosted quotas
 TEXT_MODEL    = "gemini-2.0-flash"           # fast text generation
-EMBED_MODEL   = "models/embedding-001"       # 768‑dim embedding model
+EMBED_MODEL   = "gemini-embedding-001"       # 768‑dim embedding model
+#EMBED_MODEL   = "textembedding-gecko@001"       # 768‑dim embedding model
 
 if not GENAI_API_KEY:
     raise RuntimeError("⚠️  GEMINI_API_KEY environment variable is missing!")
