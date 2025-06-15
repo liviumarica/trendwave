@@ -208,8 +208,8 @@ def chat_api():
                     f"You are a helpful restaurant assistant.\n"
                     f"User: {user_msg}\n"
                     f"Here are the restaurants to consider:\n{ctx}\n"
-                    f"Recommend the best match based solely on this data, prioritizing romantic Italian restaurants "
-                    f"with a rating over 4 stars and outdoor seating. If no exact match, suggest the closest match "
+                    f"Recommend the best match based solely on this data"
+                    f"If no exact match, suggest the closest match "
                     f"and explain why, using the score as a relevance indicator."
                 )
         else:
